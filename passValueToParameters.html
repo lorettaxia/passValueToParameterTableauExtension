@@ -1,0 +1,177 @@
+<html>
+	<head>
+		<title>PASS VALUE TO PARAMETER</title>
+		<!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+
+    <!-- Bootstrap -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" >
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" ></script>
+
+    <!-- Extensions Library (this will be hosted on a CDN eventually) -->
+    <script src="../../lib/tableau-extensions-1.latest.js"></script>
+		
+		<script>
+		
+		(function () {
+			const defaultParameter = 'Product_P_C';
+			let ParameterToBeChanged = '';
+			let correspondingFilter = '';
+			
+			let unregisterHandlerFunctions = [];
+		
+		$(document).ready(function() {
+				tableau.extensions.initializeAsync({'configure': configure}).then(function() {
+		
+				tableau.extensions.settings.addEventListener(tableau.TableauEventType.SettingsChanged, (settingsEvent) => {	
+					console.log("setting changed");
+					updateExtensionBasedOnSettings(settingsEvent.newSettings);
+				});
+				
+				 fetchFilters();
+				
+				
+			});			
+		});
+		
+		
+		function configure() {
+		console.log("configure");
+			const popupUrl = 'https://raw.githubusercontent.com/lorettaxia/passValueToParameterTableauExtension/master/uiDialog.html';
+			tableau.extensions.ui.displayDialogAsync(popupUrl, defaultParameter, { height: 500, width: 500 }).then((closePayload) => {
+			  // The promise is resolved when the dialog has been expectedly closed, meaning that
+			  // the popup extension has called tableau.extensions.ui.closeDialog.
+			  $('#inactive').hide();
+			  $('#active').show();
+
+			  // The close payload is returned from the popup extension via the closeDialog method
+			 // $('#filter').text(closePayload);
+			 // fetchFilters();
+			}).catch((error) => {
+			  // One expected error condition is when the popup is closed by the user (meaning the user
+			  // clicks the 'X' in the top right of the dialog).  This can be checked for like so:
+			  switch(error.errorCode) {
+				case tableau.ErrorCodes.DialogClosedByUser:
+				  console.log("Dialog was closed by user");
+				  break;
+				default:
+				  console.error(error.message);
+			  }
+			});
+		}
+		
+		function updateExtensionBasedOnSettings(settings){
+			if(settings.selectedParameters) {
+			console.log('selected parameter');
+			console.log(settings.selectedParameters);
+			console.log(settings.selectedFilters);
+				ParameterToBeChanged = JSON.parse(settings.selectedParameters);
+				correspondingFilter = JSON.parse(settings.selectedFilters);
+				$('#parameter').text(ParameterToBeChanged);
+				$('#filter').text(correspondingFilter);
+			console.log(correspondingFilter);
+			}
+			
+			
+		}
+		
+		function fetchFilters(){
+				
+				unregisterHandlerFunctions.forEach(function (unregisterHandlerFunction) {
+					unregisterHandlerFunction();
+				});
+				
+				var dashboard = tableau.extensions.dashboardContent.dashboard;
+			
+				//dashboard.addEventListener(tableauSoftware.TableauEventName.FILTER_CHANGE, onFilterChangeProduct);
+				
+				var filterFetchPromises = [];
+				var dashboardFilters = [];
+				
+				
+				//fetch promises
+				dashboard.worksheets.forEach(function (worksheet) {
+					filterFetchPromises.push(worksheet.getFiltersAsync());	
+				//handle events when filter get changed
+				let unregisterHandlerFunction = worksheet.addEventListener(tableau.TableauEventType.FilterChanged, filterChangedHandler);
+					unregisterHandlerFunctions.push(unregisterHandlerFunction);		
+				});
+				
+				//call promises to get filter results
+				Promise.all(filterFetchPromises).then(function(fetchResults) {
+					fetchResults.forEach(function (filterForWorksheet) {
+						filterForWorksheet.forEach(function (filter) {
+						dashboardFilters.push(filter);
+						});
+					});
+					
+				
+					console.log(ParameterToBeChanged);
+					//console.log(filterFetchPromises[1]);
+					
+					passValueToParameter(dashboardFilters,correspondingFilter, ParameterToBeChanged);
+			
+				});
+				
+				//console.log(unregisterHandlerFunction);
+					
+		};
+		
+			function filterChangedHandler (filterEvent) {
+				// Just reconstruct the filters table whenever a filter changes.
+				// This could be optimized to add/remove only the different filters.
+				fetchFilters();
+			  }
+
+						
+			
+		function passValueToParameter(filters, filterName, parameterName){
+			
+			filters.forEach(function(filter){
+				
+				if (filter.fieldName == filterName) {
+				//	console.log(filter);
+					var valuesFromFilter = filter.appliedValues; //selections from filter
+					
+					//console.log(valuesFromFilter);
+					var valuesToParameter = '^' +  valuesFromFilter[0].value + '$'; //a string to hold all the values from filter						
+						for(var i=1; i<valuesFromFilter.length;i++) {
+							valuesToParameter += '|' + '^' +  valuesFromFilter[i].value + '$';		
+							}
+					
+					console.log(parameterName);
+					
+					tableau.extensions.dashboardContent.dashboard.findParameterAsync(parameterName).then(function (param){
+						param.changeValueAsync(valuesToParameter);	
+					});
+							
+				}; 
+			});
+		}
+	}) ();	
+		
+		
+		
+
+	
+
+		</script>
+	</head>
+	<body>		
+		<div id="viz"></div>
+		<div id='viz2'></div>
+		 <div class="container">
+			<p id="mainContent">
+				<div id="active" style="display: none;">
+					Values being passed from filter 
+					<b><span id="filter"> A </span></b> 
+					to parameter
+					<b><span id="parameter">B</span></b> 
+				</div>
+				<div id="inactive">
+					Please click CONFIGURATION in the dropdown menu for further process.
+				</div>
+			</p>
+		</div>
+	</body>
+</html>
